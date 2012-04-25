@@ -46,6 +46,15 @@ struct request {
 	struct buffer_head * bh;
 	struct buffer_head * bhtail;
 	request_queue_t *q;
+
+/**
+ * I/O priority
+ * set as process priority when inserting request,
+ * update when merge with higher priority ones.
+ */
+	unsigned short ioprio;
+	// deadline is currently unused
+	unsigned long deadline;
 };
 
 #include <linux/elevator.h>
