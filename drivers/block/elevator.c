@@ -180,6 +180,74 @@ int elevator_noop_merge(request_queue_t *q, struct request **req,
 
 void elevator_noop_merge_req(struct request *req, struct request *next) {}
 
+/**
+ * Priority merge algorithm is exactly the same with elevator_linus_merge.
+ */
+int elevator_priority_merge(request_queue_t *q, struct request **req,
+			 struct list_head * head,
+			 struct buffer_head *bh, int rw,
+			 int max_sectors)
+{
+	struct list_head *entry = &q->queue_head;
+	unsigned int count = bh->b_size >> 9, ret = ELEVATOR_NO_MERGE;
+	struct request *__rq;
+	int backmerge_only = 0;
+
+	while (!backmerge_only && (entry = entry->prev) != head) {
+		__rq = blkdev_entry_to_request(entry);
+
+		/*
+		 * we can't insert beyond a zero sequence point
+		 */
+		if (__rq->elevator_sequence <= 0)
+			backmerge_only = 1;
+
+		if (__rq->waiting)
+			continue;
+		if (__rq->rq_dev != bh->b_rdev)
+			continue;
+		if (!*req && bh_rq_in_between(bh, __rq, &q->queue_head) && !backmerge_only)
+			*req = __rq;
+		if (__rq->cmd != rw)
+			continue;
+		if (__rq->nr_sectors + count > max_sectors)
+			continue;
+		if (__rq->sector + __rq->nr_sectors == bh->b_rsector) {
+			ret = ELEVATOR_BACK_MERGE;
+			*req = __rq;
+			break;
+		} else if (__rq->sector - count == bh->b_rsector && !backmerge_only) {
+			ret = ELEVATOR_FRONT_MERGE;
+			__rq->elevator_sequence--;
+			*req = __rq;
+			break;
+		}
+	}
+
+	/*
+	 * account merge (ret != 0, cost is 1) or seeky insert (*req is set,
+	 * cost is ELV_LINUS_SEEK_COST
+	 */
+	if (*req) {
+		int scan_cost = ret ? 1 : ELV_LINUS_SEEK_COST;
+		struct list_head *entry = &(*req)->queue;
+
+		while ((entry = entry->next) != &q->queue_head) {
+			__rq = blkdev_entry_to_request(entry);
+			__rq->elevator_sequence -= scan_cost;
+		}
+	}
+
+	return ret;
+}
+
+void elevator_priority_merge_req(struct request *req, struct request *next)
+{
+	if (next->elevator_sequence < req->elevator_sequence)
+		req->elevator_sequence = next->elevator_sequence;
+}
+// END priority merge
+
 int blkelvget_ioctl(elevator_t * elevator, blkelv_ioctl_arg_t * arg)
 {
 	blkelv_ioctl_arg_t output;

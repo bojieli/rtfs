@@ -31,6 +31,10 @@ int elevator_linus_merge(request_queue_t *, struct request **, struct list_head 
 void elevator_linus_merge_cleanup(request_queue_t *, struct request *, int);
 void elevator_linus_merge_req(struct request *, struct request *);
 
+int elevator_priority_merge(request_queue_t *, struct request **, struct list_head *, struct buffer_head *, int, int);
+void elevator_priority_merge_cleanup(request_queue_t *, struct request *, int);
+void elevator_priority_merge_req(struct request *, struct request *);
+
 typedef struct blkelv_ioctl_arg_s {
 	int queue_ID;
 	int read_latency;
@@ -99,5 +103,14 @@ static inline int elevator_request_latency(elevator_t * elevator, int rw)
 	elevator_linus_merge,		/* elevator_merge_fn */		\
 	elevator_linus_merge_req,	/* elevator_merge_req_fn */	\
 	})
+
+#define ELEVATOR_PRIORITY						\
+((elevator_t) {								\
+	128,				/* read passovers */		\
+	512,				/* write passovers */		\
+									\
+	elevator_priority_merge,	/* elevator_merge_fn */		\
+	elevator_priority_merge_req,	/* elevator_merge_req_fn */	\
+})
 
 #endif

@@ -52,7 +52,7 @@ struct request {
  * set as process priority when inserting request,
  * update when merge with higher priority ones.
  */
-	unsigned short ioprio;
+	int ioprio;
 	// deadline is currently unused
 	unsigned long deadline;
 };
@@ -72,6 +72,21 @@ typedef request_queue_t * (queue_proc) (kdev_t dev);
 typedef int (make_request_fn) (request_queue_t *q, int rw, struct buffer_head *bh);
 typedef void (plug_device_fn) (request_queue_t *q, kdev_t device);
 typedef void (unplug_device_fn) (void *q);
+
+/**
+ * Return priority of I/O request depending on current task_struct.
+ * Note: should be called in the context of the process invoking I/O request.
+ */
+extern inline int io_goodness() {
+	task_struct *p = current;
+	if (p->policy & SCHED_YIELD)
+		return -1;
+	// Non-RT process
+	if (p->policy == SCHED_OTHER)
+		return 20 - p->nice;
+	// Real time process
+	return 1000 + p->rt_priority;
+}
 
 struct request_list {
 	unsigned int count;

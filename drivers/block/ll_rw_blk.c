@@ -531,7 +531,8 @@ static int __make_request(request_queue_t * q, int rw, struct buffer_head * bh);
 void blk_init_queue(request_queue_t * q, request_fn_proc * rfn)
 {
 	INIT_LIST_HEAD(&q->queue_head);
-	elevator_init(&q->elevator, ELEVATOR_LINUS);
+//	elevator_init(&q->elevator, ELEVATOR_LINUS);
+	elevator_init(&q->elevator, ELEVATOR_PRIORITY);
 	blk_init_free_list(q);
 	q->request_fn     	= rfn;
 	q->back_merge_fn       	= ll_back_merge_fn;
@@ -997,6 +998,34 @@ static inline void attempt_front_merge(request_queue_t * q,
 	attempt_merge(q, blkdev_entry_to_request(prev), max_sectors, max_segments);
 }
 
+/**
+ * Maintain the priority of request list in non-increasing order from head to tail.
+ * (the head with highest priority, which is first executed)
+ */
+static inline void adjust_request_list(struct request * rq, struct list_head * head)
+{
+	struct list_head * this;
+	struct request * this_rq;
+	this = rq->queue.prev;
+	while (this != head) {
+		this_rq = blkdev_entry_to_request(this);
+		if (this_rq->ioprio >= rq->ioprio)
+			break; // should insert after this node
+		this = this->prev;
+	}
+	if (this != rq->queue.prev)
+		list_move(&rq->queue, this);
+}
+
+/**
+ * The main function we modified to enhance real-time performance.
+ * Priority merge comes from elevator_linus_merge, while process priority
+ *   is maintained in request data structure.
+ * A merged request hold the priority of the highest one.
+ * In this version, handling of requests are strictly from the highest to the
+ *   lowest, so the request queue is maintained in this order. Since there
+ *   might not be too many requests, insertion sort is performed on list.
+ */
 static int __make_request(request_queue_t * q, int rw,
 				  struct buffer_head * bh)
 {
@@ -1008,6 +1037,7 @@ static int __make_request(request_queue_t * q, int rw,
 	int latency;
 	elevator_t *elevator = &q->elevator;
 	int should_wake = 0;
+	int priority = io_goodness();
 
 	count = bh->b_size >> 9;
 	sector = bh->b_rsector;
@@ -1077,6 +1107,10 @@ again:
 			req->bhtail->b_reqnext = bh;
 			req->bhtail = bh;
 			req->nr_sectors = req->hard_nr_sectors += count;
+			if (req->ioprio < priority) {
+				req->ioprio = priority;
+				adjust_request_list(req, head);
+			}
 			blk_started_io(count);
 			blk_started_sectors(req, count);
 			drive_stat_acct(req->rq_dev, req->cmd, count, 0);
@@ -1100,6 +1134,10 @@ again:
 			req->current_nr_sectors = req->hard_cur_sectors = count;
 			req->sector = req->hard_sector = sector;
 			req->nr_sectors = req->hard_nr_sectors += count;
+			if (req->ioprio < priority) {
+				req->ioprio = priority;
+				adjust_request_list(req, head);
+			}
 			blk_started_io(count);
 			blk_started_sectors(req, count);
 			drive_stat_acct(req->rq_dev, req->cmd, count, 0);
@@ -1168,6 +1206,7 @@ get_rq:
 	req->bh = bh;
 	req->bhtail = bh;
 	req->rq_dev = bh->b_rdev;
+	req->ioprio = priority;
 	req->start_time = jiffies;
 	req_new_io(req, 0, count);
 	blk_started_io(count);
