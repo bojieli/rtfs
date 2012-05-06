@@ -78,7 +78,7 @@ typedef void (unplug_device_fn) (void *q);
  * Note: should be called in the context of the process invoking I/O request.
  */
 extern inline int io_goodness() {
-	task_struct *p = current;
+	struct task_struct *p = current;
 	if (p->policy & SCHED_YIELD)
 		return -1;
 	// Non-RT process
