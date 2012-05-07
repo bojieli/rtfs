@@ -77,7 +77,7 @@ typedef void (unplug_device_fn) (void *q);
  * Return priority of I/O request depending on current task_struct.
  * Note: should be called in the context of the process invoking I/O request.
  */
-extern inline int io_goodness() {
+extern inline int io_goodness(void) {
 	struct task_struct *p = current;
 	if (p->policy & SCHED_YIELD)
 		return -1;
