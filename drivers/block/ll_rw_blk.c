@@ -1212,6 +1212,7 @@ get_rq:
 	blk_started_io(count);
 	blk_started_sectors(req, count);
 	add_request(q, req, insert_here);
+	adjust_request_list(req, head);
 out:
 	if (freereq)
 		blkdev_release_request(freereq);
